@@ -120,7 +120,11 @@ body.preview{overflow:hidden}
 body.preview .app{padding:0;max-width:none;height:100vh}
 body.preview header,body.preview .side,body.preview .panel,body.preview .panelbar,body.preview .dock,body.preview .scrim,body.preview .viewbtns,body.preview .hint,body.preview #btnToggle,body.preview #btnStyle,body.preview #btnReset,body.preview #btnFace,body.preview #editBadge,body.preview .toast{display:none!important}
 body.preview .main{display:block}
-body.preview .stage{position:static;height:100vh;justify-content:center;gap:0}
+body.preview .stage{position:static;height:100vh;justify-content:center;gap:0;padding:14px 0;box-sizing:border-box}
+@supports (padding-top:env(safe-area-inset-top)){
+  body.preview .stage{padding-top:calc(14px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));padding-bottom:calc(14px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))}
+  body.preview #btnBack,body.preview #btnExp{top:calc(14px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))}
+}
 body.preview .poster-wrap{max-width:min(100vw,80vh);border-radius:0;box-shadow:none;background:transparent}
 #btnBack{position:fixed;left:14px;top:14px;z-index:30;display:none;width:40px;height:40px;padding:0;align-items:center;justify-content:center;background:rgba(255,255,255,.92)}
 body.preview #btnBack{display:flex}
@@ -2764,8 +2768,8 @@ function render(){
   renderer.render(scene,camera);
   pctx.setTransform(1,0,0,1,0,0); pctx.drawImage(bgC,0,0); pctx.drawImage(glCanvas,0,0);
 }
-let last=performance.now(), busy=false, offline=false;
-function frame(now){ const dt=Math.min(.05,(now-last)/1000); last=now; if(!offline){ step(dt); render(); } requestAnimationFrame(frame); }
+let last=performance.now(), busy=false, offline=false, recVT=null;
+function frame(now){ const dt=Math.min(.05,(now-last)/1000); last=now; if(!offline){ step(dt); render(); if(recVT){ try{ recVT.requestFrame(); }catch(e){} } } requestAnimationFrame(frame); }
 
 /* ================= director ================= */
 const INIT_VIEW={yaw:-0.23038346,pitch:0.10995574,roll:-0.17802358,zoom:1,cx:0,cy:0};
@@ -2867,7 +2871,7 @@ function bindExportMats(){
 function makeExportDirector(onDone){
   const d={t:0,p:0,t0:0,ks:{},done:false,i:0,h:0};
   const SPIN=6;
-  const press=id=>{ for(const m of keyMeshes) if(m.userData.key===id) m.userData.down=true; d.ks[id]=d.t+.16; };
+  const press=id=>{ for(const m of keyMeshes) if(m.userData.key===id) m.userData.down=true; d.ks[id]=d.t+.16; playClick(); };
   const chatReady=()=>view==='thread'&&simT-thT0>=thTime(Math.max(0,chatItems.length-1))+.6;
   const gn=st.gallery.length, mn=st.music.length, cn=convs().length;
   const acts=[];
@@ -2930,7 +2934,7 @@ function makeExportDirector(onDone){
     add(el=>el>=1);
   };
   add(()=>{ if(d.t>=.9){ sendMessage(); return true; } return false; });
-  add(()=>{ if(d.t>=4.8){ openTarget=1; $('btnToggle').textContent='合上手机'; syncHint(editMode); return true; } return false; });
+  add(()=>{ if(d.t>=4.8){ openTarget=1; playOpen(); $('btnToggle').textContent='合上手机'; syncHint(editMode); return true; } return false; });
   add(el=> open>=.96&&el>=.6);
   add(el=>{ if(el>=.9){ openThread(0,true); return true; } return false; });
   add(()=>chatReady());
@@ -3332,12 +3336,13 @@ function runMp4(){
   if(!window.MediaRecorder||!poster.captureStream){ setStatus('这个浏览器不支持视频录制，请用 Chrome 打开。'); return; }
   setEdit(false); ensureAudio(); if(actx&&actx.state==='suspended') actx.resume();
   muRec=!!st.expSound;
+  if(actx&&actx.createMediaStreamDestination){ try{ if(recDest) master.disconnect(recDest); }catch(e){} try{ recDest=actx.createMediaStreamDestination(); master.connect(recDest); }catch(e){} }
   const types=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp9','video/webm'];
   const mime=types.find(t=>MediaRecorder.isTypeSupported(t))||'', ext=mime.includes('mp4')?'mp4':'webm';
-  const vs=poster.captureStream(30), tracks=[...vs.getVideoTracks()]; if(st.expSound&&recDest) tracks.push(...recDest.stream.getAudioTracks());
+  const vs=poster.captureStream(0), tracks=[...vs.getVideoTracks()]; recVT=tracks[0]||null; if(st.expSound&&recDest) tracks.push(...recDest.stream.getAudioTracks());
   let rec; try{ rec=new MediaRecorder(new MediaStream(tracks),Object.assign({videoBitsPerSecond:12e6},mime?{mimeType:mime}:{})); }catch(e){ setStatus('无法开始录制。'); muRec=false; muPause(); return; }
   const chunks=[]; let pt=0; rec.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
-  rec.onstop=async()=>{ clearInterval(pt); muRec=false; muPause(); const blob=new Blob(chunks,{type:mime||'video/webm'}); vs.getTracks().forEach(t=>t.stop());
+  rec.onstop=async()=>{ clearInterval(pt); muRec=false; muPause(); const blob=new Blob(chunks,{type:mime||'video/webm'}); vs.getTracks().forEach(t=>t.stop()); recVT=null;
     setProg(1); const ok=await saveBlob(blob,`flip-phone-${stamp()}.${ext}`); exportFinish(ok); };
   lockUI(true); startPrev(); statusEl.classList.add('busy'); setStatus('正在导出，请不要切屏/退出');
   parseChat(); const est=exportDuration(), tracked=est>0; if(tracked) showBar();
