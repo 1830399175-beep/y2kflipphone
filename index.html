@@ -90,6 +90,7 @@ header{display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex-wr
   backdrop-filter:blur(14px) saturate(180%);-webkit-backdrop-filter:blur(14px) saturate(180%);
   box-shadow:0 6px 18px rgba(40,50,90,.16),inset 0 1px 0 rgba(255,255,255,.95);transition:transform .15s ease,background .15s ease}
 #btnStyle,#btnFace{left:12px}
+@media (max-width:940px){#btnFace{display:none!important}}
 #btnReset{right:12px}
 #btnStyle:hover,#btnReset:hover,#btnFace:hover{background:rgba(255,255,255,.78)}
 #btnStyle:active,#btnReset:active,#btnFace:active{transform:scale(.95)}
@@ -453,6 +454,7 @@ input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:tex
         <div class="sec">
           <div class="row"><button class="small" id="btnDefStk">示例搭配</button><button class="small" id="btnClearStk">全部撕掉</button></div>
           <h2>机身贴纸</h2>
+          <div class="chainopts" id="faceOpts"><button class="chip" type="button" data-side="f" aria-current="true">贴正面</button><button class="chip" type="button" data-side="b" aria-current="false">贴反面</button></div>
           <div class="stk" id="stkPal" role="group" aria-label="选择贴纸"></div>
           <input type="file" id="stkFile" accept="image/*" hidden>
         </div>
@@ -3213,6 +3215,7 @@ $('stkFile').addEventListener('change',e=>loadImageFile(e.target.files[0],360,c=
 }));
 function setSide(v){
   stkSide=v; $('btnFace').textContent=v==='b'?'反面':'正面';
+  const fo=$('faceOpts'); if(fo) [].forEach.call(fo.children,b=>b.setAttribute('aria-current',String(b.dataset.side===v)));
   select(-1); wrap.style.cursor='';
 }
 function setEdit(v){
@@ -3228,6 +3231,7 @@ function updateSel(){ const s=stkList[selId]; $('selBox').hidden=!s; refreshColU
 function syncRangeNums(size,deg){ $('valSize').textContent=Math.round(size*100)+'%'; $('valRot').textContent=deg+'°'; }
 $('btnFace').addEventListener('pointerdown',e=>e.stopPropagation());
 $('btnFace').addEventListener('click',()=>setSide(stkSide==='b'?'f':'b'));
+$('faceOpts').addEventListener('click',e=>{ const b=e.target.closest('[data-side]'); if(!b) return; setSide(b.dataset.side); });
 $('rngSize').addEventListener('input',e=>{ const s=stkList[selId]; if(!s) return; const v=+e.target.value; if(validSpot(s.x,s.y,STK[s.t].r*v)){ s.s=v; updateSticker(selId); } else { e.target.value=s.s; toast('这里不能再放大了'); } syncRangeNums(s.s,Math.round(s.rot*180/Math.PI)); });
 $('rngRot').addEventListener('input',e=>{ const s=stkList[selId]; if(!s) return; s.rot=+e.target.value*Math.PI/180; updateSticker(selId); syncRangeNums(s.s,+e.target.value); });
 $('btnDel').addEventListener('click',()=>{ if(selId<0) return; stkList.splice(selId,1); selId=-1; rebuildStickers(); });
@@ -3656,7 +3660,7 @@ function fitStage(on){
   elWrap.style.transform='scale('+s.toFixed(3)+')';
   if(inStage) elVB.style.marginTop=(-(1-s)*h).toFixed(1)+'px';
 }
-function closeSheet(){ document.body.classList.remove('sheetopen'); elScrim.hidden=true; elDock.querySelectorAll('.dcell').forEach(c=>c.classList.remove('on')); fitStage(false); }
+function closeSheet(){ if(editMode) setEdit(false); document.body.classList.remove('sheetopen'); elScrim.hidden=true; elDock.querySelectorAll('.dcell').forEach(c=>c.classList.remove('on')); fitStage(false); }
 function openSheet(k){ if(!k) return; showTab(k); elSheetTitle.textContent=tabLabelOf(k);
   document.body.classList.add('sheetopen');
   elDock.querySelectorAll('.dcell').forEach(c=>c.classList.toggle('on',c.dataset.tabKey===k)); fitStage(true); }
