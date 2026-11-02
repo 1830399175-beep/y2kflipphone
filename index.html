@@ -586,6 +586,17 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, smooth=t=>t*t*(3-2*
 const easeOutBack=t=>{ const c1=1.9,c3=c1+1; return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2); };
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function mk(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return c; }
+const CANFILTER=(function(){try{var c=mk(4,4).getContext('2d');if(!('filter' in c))return false;c.filter='blur(1px)';return c.filter==='blur(1px)'}catch(e){return false}})();
+function blurCanvas(src,w,h,radius){
+  var lv=0,r=Math.max(1,radius);while(r>1.5){r/=2;lv++}if(lv<1)lv=1;
+  var sc=Math.pow(2,lv),cur=mk(Math.max(1,Math.round(w/sc)),Math.max(1,Math.round(h/sc)));
+  var cg=cur.getContext('2d');cg.imageSmoothingEnabled=true;cg.imageSmoothingQuality='high';
+  cg.drawImage(src,0,0,cur.width,cur.height);
+  for(var i=lv-1;i>=0;i--){var nw=Math.max(1,Math.round(w/Math.pow(2,i))),nh=Math.max(1,Math.round(h/Math.pow(2,i)));
+    var nx=mk(nw,nh),ng=nx.getContext('2d');ng.imageSmoothingEnabled=true;ng.imageSmoothingQuality='high';
+    ng.drawImage(cur,0,0,nw,nh);cur=nx;}
+  return cur;
+}
 
 /* ================= palettes ================= */
 const THEMES = {
@@ -1605,13 +1616,14 @@ const camera=new THREE.PerspectiveCamera(30,W/H,.1,100); camera.position.set(0,0
   const c=mk(1024,512), g=c.getContext('2d'), gr=g.createLinearGradient(0,0,0,512);
   gr.addColorStop(0,'#ffffff'); gr.addColorStop(.3,'#eef0ff'); gr.addColorStop(.44,'#c2c8e2'); gr.addColorStop(.52,'#3e4362');
   gr.addColorStop(.58,'#8e94b2'); gr.addColorStop(.75,'#dfe2f2'); gr.addColorStop(.9,'#a7adc8'); gr.addColorStop(1,'#f2f3fa');
-  g.fillStyle=gr; g.fillRect(0,0,1024,512); g.filter='blur(5px)';
-  g.fillStyle='#ffffff'; [[60,110,170,70],[400,80,230,46],[760,140,130,100],[260,340,420,22],[900,60,90,40]].forEach(r=>g.fillRect(...r));
-  g.fillStyle='rgba(255,180,225,.95)'; g.fillRect(560,230,190,70);
-  g.fillStyle='rgba(160,195,255,.95)'; g.fillRect(90,240,200,70);
-  g.fillStyle='rgba(205,180,255,.9)'; g.fillRect(330,200,120,50);
-  g.fillStyle='#363b58'; g.fillRect(0,300,1024,8); g.fillRect(0,160,1024,3);
-  g.filter='none';
+  g.fillStyle=gr; g.fillRect(0,0,1024,512);
+  const rc=mk(1024,512), rq=rc.getContext('2d');
+  rq.fillStyle='#ffffff'; [[60,110,170,70],[400,80,230,46],[760,140,130,100],[260,340,420,22],[900,60,90,40]].forEach(r=>rq.fillRect(...r));
+  rq.fillStyle='rgba(255,180,225,.95)'; rq.fillRect(560,230,190,70);
+  rq.fillStyle='rgba(160,195,255,.95)'; rq.fillRect(90,240,200,70);
+  rq.fillStyle='rgba(205,180,255,.9)'; rq.fillRect(330,200,120,50);
+  rq.fillStyle='#363b58'; rq.fillRect(0,300,1024,8); rq.fillRect(0,160,1024,3);
+  g.drawImage(blurCanvas(rc,1024,512,5),0,0);
   const tex=new THREE.CanvasTexture(c); tex.mapping=THREE.EquirectangularReflectionMapping; tex.encoding=THREE.sRGBEncoding;
   const pm=new THREE.PMREMGenerator(renderer); scene.environment=pm.fromEquirectangular(tex).texture; tex.dispose(); pm.dispose();
 })();
@@ -2675,9 +2687,11 @@ function drawBg(){ const g0=bgC.getContext('2d'); g0.setTransform(1,0,0,1,0,0); 
   g0.fillStyle='#fff'; g0.fillRect(0,0,W,H);
   if(st.bgMode!=='img') y2kBackdrop(g0,T());
   if(bgImg&&st.bgMode==='img'){ const b=Math.max(0,+st.bgBlur||0), sc=1+(b*2)/Math.min(W,H);
-    g0.save(); if(b) g0.filter='blur('+b+'px)';
-    const s=Math.max(W*sc/bgImg.width,H*sc/bgImg.height), iw=bgImg.width*s, ih=bgImg.height*s;
-    g0.drawImage(bgImg,(W-iw)/2,(H-ih)/2,iw,ih); g0.restore(); }
+    const s=Math.max(W*sc/bgImg.width,H*sc/bgImg.height), iw=bgImg.width*s, ih=bgImg.height*s, ox=(W-iw)/2, oy=(H-ih)/2;
+    if(b&&!CANFILTER){ const layer=mk(Math.round(iw),Math.round(ih)), lg=layer.getContext('2d');
+      lg.drawImage(bgImg,0,0,layer.width,layer.height);
+      g0.drawImage(blurCanvas(layer,layer.width,layer.height,b),ox,oy,iw,ih); }
+    else { g0.save(); if(b) g0.filter='blur('+b+'px)'; g0.drawImage(bgImg,ox,oy,iw,ih); g0.restore(); } }
   bgDirty=false; }
 function drawBgOld(){
   const g=bgC.getContext('2d'), th0=T(), th={...th0,ink:th0.soft};
